@@ -1,2 +1,4 @@
 /rust-contract/target
 /node_modules
+/public/testnet
+/public/mainnet
