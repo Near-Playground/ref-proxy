@@ -1,11 +1,15 @@
 {
-  "name": "ref-proxy",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "Steve Kok <kokchoquan@gmail.com>",
-  "license": "GPL-3.0-or-later"
+    "name": "ref-proxy",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "contract:build:mainnet": "cd rust-contract && cargo near build --no-release --no-abi --out-dir '../public/mainnet'",
+        "contract:build:testnet": "cd rust-contract && cross-env REF_FINANCE_ID=ref-finance-101.testnet cargo near build --no-release --no-abi --out-dir '../public/testnet'"
+    },
+    "author": "Steve Kok <kokchoquan@gmail.com>",
+    "license": "GPL-3.0-or-later",
+    "devDependencies": {
+        "cross-env": "^7.0.3"
+    }
 }
