@@ -5,7 +5,7 @@ pub fn assert_owner(owner_id: &AccountId) {
 }
 
 pub fn assert_full_access() {
-    assert!(env::attached_deposit() != NearToken::from_yoctonear(1), "Requires attached deposit of exactly 1 yoctoNEAR.");
+    assert!(env::attached_deposit() == NearToken::from_yoctonear(1), "Requires attached deposit of exactly 1 yoctoNEAR.");
 }
 
 pub fn assert_owner_and_full_access(owner_id: &AccountId) {

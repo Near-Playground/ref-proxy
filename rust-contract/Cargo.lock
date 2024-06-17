@@ -3019,8 +3019,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "reffinance-proxy"
-version = "0.1.0"
+name = "ref-proxy"
+version = "0.1.3"
 dependencies = [
  "near-sdk",
  "near-workspaces",

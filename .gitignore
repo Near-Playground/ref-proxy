@@ -1,4 +1,3 @@
 /rust-contract/target
 /node_modules
-/public/testnet
-/public/mainnet
+/public/ref_proxy.wasm
