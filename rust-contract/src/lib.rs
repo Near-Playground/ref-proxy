@@ -1,8 +1,6 @@
-mod config;
 mod helper;
 mod external_promise;
 
-use config::*;
 use helper::*;
 use near_sdk::{env, log, near, serde::{Deserialize, Serialize}, serde_json, AccountId, Gas, NearToken, Promise, PromiseResult};
 
@@ -10,7 +8,9 @@ use near_sdk::{env, log, near, serde::{Deserialize, Serialize}, serde_json, Acco
 #[near(contract_state)]
 pub struct Contract {
     registered_tokens: Vec<AccountId>,
-    owner_id: AccountId
+    owner_id: AccountId,
+    ref_finance_id: AccountId,
+    fee: u128,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -21,6 +21,12 @@ struct TokenExchange {
     amount_in: String,
     pool_id: u32,
     min_amount_out: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct Message {
+    actions: Vec<TokenExchange>
 }
 
 // Define the default, which automatically initializes the contract
@@ -34,13 +40,16 @@ impl Default for Contract {
 #[near]
 impl Contract {
     #[init]
-    pub fn new(owner_id: AccountId) -> Self {
+    pub fn new(owner_id: AccountId, fee: u128, ref_finance_id: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
         assert_eq!(env::current_account_id(), env::predecessor_account_id(), "Predecessor account must be the same as the current account.");
+        assert!(fee <= 10000, "Fee must be less than or equal to 100%.");
 
         Self {
             owner_id: owner_id,
-            registered_tokens: Vec::new()
+            registered_tokens: Vec::new(),
+            fee: fee,
+            ref_finance_id: ref_finance_id,
         }
     }
 
@@ -61,23 +70,23 @@ impl Contract {
             }
         }
 
-        external_promise::register_tokens(token_ids)
+        external_promise::register_tokens(token_ids, self.ref_finance_id.clone())
     }
 
     #[payable]
-    pub fn withdraw_from_ref(&mut self, amount: u128, token_id: AccountId) -> Promise {
+    pub fn withdraw_from_ref(&mut self, amount: String, token_id: AccountId) -> Promise {
         assert_owner_and_full_access(&self.owner_id);
 
-        external_promise::withdraw_from_ref(amount, token_id)
+        external_promise::withdraw_from_ref(amount, token_id, self.ref_finance_id.clone())
     }
 
     #[payable]
-    pub fn withdraw(&mut self, amount: u128, token_id: AccountId, receiver_id: AccountId) -> Promise {
+    pub fn withdraw(&mut self, amount: String, token_id: AccountId, receiver_id: AccountId) -> Promise {
         assert_owner_and_full_access(&self.owner_id);
 
         match token_id.to_string().as_str() {
             "near" => {
-                Promise::new(receiver_id).transfer(NearToken::from_yoctonear(amount))
+                Promise::new(receiver_id).transfer(NearToken::from_yoctonear(amount.parse().unwrap()))
             }
             _ => {
                 external_promise::transfer_ft(token_id, receiver_id, amount)
@@ -85,8 +94,9 @@ impl Contract {
         }
     }
 
-    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: u128, msg: String) -> u128 {
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> u128 {
         let token_id = env::predecessor_account_id();
+        let amount = amount.parse::<u128>().expect("Failed to parse amount.");
 
         // Preventing the contract halting half way through the transaction
         assert!(env::prepaid_gas() > Gas::from_tgas(250), "Not enough gas to process the transaction.");
@@ -98,7 +108,7 @@ impl Contract {
         };
 
         // Parsing message
-        let swap_routes = serde_json::from_str::<Vec<TokenExchange>>(&msg).expect("Failed to parse the msg.");
+        let swap_routes = serde_json::from_str::<Message>(&msg).expect("Failed to parse the msg.").actions;
 
         let first_exchange = swap_routes.get(0).expect("Must have at least one token exchange.");
         let last_exchange = swap_routes.get(swap_routes.len() - 1).expect("Must have at least one token exchange.");
@@ -122,25 +132,25 @@ impl Contract {
         let amount_in = first_exchange.amount_in.clone().parse::<u128>().expect("Failed to parse amount in.");
         let balance = amount - amount_in;
 
-        let fee = balance * get_fee_thousandth() / 1000;
+        let fee = balance * self.fee / 10000;
         let new_deposit = amount - fee;
         
         let mut new_swap_routes = swap_routes;
         new_swap_routes.first_mut().unwrap().amount_in = new_deposit.to_string();
 
-        external_promise::ft_transfer_call(token_in.clone(), get_ref_finance_id(), new_deposit, "".to_string()).then(
-            external_promise::swap(new_swap_routes, self.owner_id.clone())
+        external_promise::ft_transfer_call(token_in.clone(), self.ref_finance_id.clone(), new_deposit.to_string(), "".to_string()).then(
+            external_promise::swap(new_swap_routes, self.owner_id.clone(), self.ref_finance_id.clone())
         ).then(
             Promise::new(env::current_account_id()).function_call(
                 "on_ft_transfer_complete".to_string(),
                 serde_json::json!({
-                    "amount_in": amount,
+                    "amount_in": amount.to_string(),
                     "sender": sender_id.to_string(),
                     "token_in": token_in.to_string(),
                     "token_out": token_out.to_string()
                 }).to_string().as_bytes().to_vec(),
                 NearToken::from_yoctonear(0),
-                Gas::from_gas(65000000000000)
+                Gas::from_tgas(80)
             )
         );
 
@@ -148,27 +158,24 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_ft_transfer_complete(&mut self, amount_in: u128, sender: AccountId, token_in: AccountId, token_out: AccountId) -> Promise {
-        log!("Amount in: {}, Sender: {}, Token in: {}, Token out: {}", amount_in, sender, token_in, token_out);
-        log!("Promise result count: {}", env::promise_results_count());
-
+    pub fn on_ft_transfer_complete(&mut self, amount_in: String, sender: AccountId, token_in: AccountId, token_out: AccountId) -> Promise {
         assert!(env::promise_results_count() > 0, "No promise results found.");
 
-        let last_promise_result = env::promise_result(env::promise_results_count() - 1);
+        let promise_result = env::promise_result(0);
 
-        match last_promise_result {
+        match promise_result {
             PromiseResult::Failed => {
                 log!("Promise failed.");
-                external_promise::withdraw_from_ref(amount_in, token_in.clone())
+                external_promise::withdraw_from_ref(amount_in.clone(), token_in.clone(), self.ref_finance_id.clone())
                 .then(
                     external_promise::transfer_ft(token_in, sender, amount_in)
                 )
             }
             PromiseResult::Successful(result) => {
-                let amount_out = String::from_utf8(result).unwrap().parse::<u128>().unwrap();
+                let amount_out = String::from_utf8(result).unwrap().trim_matches('"').to_string();
                 log!("Promise succeed with result {}", amount_out);
 
-                external_promise::withdraw_from_ref(amount_out, token_out.clone())
+                external_promise::withdraw_from_ref(amount_out.clone(), token_out.clone(), self.ref_finance_id.clone())
                 .then(
                     external_promise::transfer_ft(token_out, sender, amount_out)
                 )
@@ -181,16 +188,12 @@ impl Contract {
     }
 
     pub fn get_fees(&self) -> String {
-        let integer_part = get_fee_thousandth() / 1000;
-        let fractional_part = get_fee_thousandth() % 1000;
+        let percentage = self.fee as f64 / 100.0;
 
-        let fractional_part = fractional_part as f64 / 10.0;
-
-        format!("{}.{:02}%", integer_part, fractional_part)
+        format!("{:02}%", percentage)
     }
 
-    // Disabled by default to protect privacy of owner
-    // pub fn get_owner_id(&self) -> AccountId {
-    //     self.owner_id.clone()
-    // }
+    pub fn get_owner_id(&self) -> AccountId {
+        self.owner_id.clone()
+    }
 }
