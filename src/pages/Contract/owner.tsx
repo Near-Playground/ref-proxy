@@ -64,10 +64,38 @@ export function ContractOwner() {
 
         const tokenIds = addTokenIds.split(',').map((x) => x.trim());
 
-        await wallet.value.signAndSendTransactions({
-            transactions: [
-                ...tokenIds.map(
-                    (tokenId): Transaction => ({
+        const transactions: Transaction[] = [];
+
+        await Promise.all(
+            tokenIds.map(async (tokenId) => {
+                const near = await nearAPI.connect({
+                    networkId: 'testnet',
+                    nodeUrl: 'https://rpc.testnet.near.org',
+                });
+
+                const account = await near.account('dontcare');
+
+                const storageRegistered = await account
+                    .viewFunction({
+                        contractId: tokenId,
+                        methodName: 'storage_balance_of',
+                        args: {
+                            account_id: contractAccountId.value,
+                        },
+                    })
+                    .then((res) =>
+                        z
+                            .object({
+                                total: z.string(),
+                                available: z.string(),
+                            })
+                            .parse(res)
+                    )
+                    .then(() => true)
+                    .catch(() => false);
+
+                if (!storageRegistered) {
+                    transactions.push({
                         signerId: activeAccount.value?.accountId ?? '',
                         receiverId: tokenId,
                         actions: [
@@ -87,8 +115,14 @@ export function ContractOwner() {
                                 },
                             },
                         ],
-                    })
-                ),
+                    });
+                }
+            })
+        );
+
+        await wallet.value.signAndSendTransactions({
+            transactions: [
+                ...transactions,
                 {
                     signerId: activeAccount.value?.accountId ?? '',
                     receiverId: contractAccountId.value,
