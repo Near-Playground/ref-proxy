@@ -153,6 +153,8 @@ export function ContractOwner() {
                             .then((res) => z.string().parse(res))
                             .then((res) => new BN(res)),
                     ]).then(([metadata, balance]) => {
+                        console.log(tokenId, balance.toString());
+
                         return {
                             tokenId,
                             symbol: metadata.symbol,
@@ -332,9 +334,10 @@ export function ContractOwner() {
                         Latest Patch: {latestPatch.humanReadableVersion}
                         {latestPatch.version !== version && (
                             <>
-                                [&nbsp;
+                                &nbsp;[&nbsp;
                                 <a
                                     href='#'
+                                    class='text-blue-600 dark:text-blue-400 hover:underline'
                                     onClick={(e) => {
                                         e.preventDefault();
 

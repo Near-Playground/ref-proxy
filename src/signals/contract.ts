@@ -240,10 +240,12 @@ export async function updateContract() {
     const contractBuffer = await contract.arrayBuffer();
     const contractCode = new Uint8Array(contractBuffer);
 
-    await account.signAndSendTransaction({
-        receiverId: contractAccountId.value,
-        actions: [nearAPI.transactions.deployContract(contractCode)],
-    });
+    await account
+        .signAndSendTransaction({
+            receiverId: contractAccountId.value,
+            actions: [nearAPI.transactions.deployContract(contractCode)],
+        })
+        .then(refreshContractVersion);
 }
 
 export async function lockContract() {
@@ -283,5 +285,6 @@ export async function lockContract() {
         })
         .then(() =>
             localStorage.removeItem(`privateKey:${contractAccountId.value}`)
-        );
+        )
+        .then(refreshContractVersion);
 }

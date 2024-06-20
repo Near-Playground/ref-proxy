@@ -13,7 +13,7 @@ pub struct Contract {
     fee: u128,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 struct TokenExchange {
     token_in: String,
@@ -108,20 +108,24 @@ impl Contract {
         };
 
         // Parsing message
-        let swap_routes = serde_json::from_str::<Message>(&msg).expect("Failed to parse the msg.").actions;
+        let swap_routes = serde_json::from_str::<Message>(&msg).unwrap().actions;
 
-        let first_exchange = swap_routes.get(0).expect("Must have at least one token exchange.");
-        let last_exchange = swap_routes.get(swap_routes.len() - 1).expect("Must have at least one token exchange.");
+        // We can only support one swap route
+        // Otherwise if any of the swap failed in between the routes due to slippage, we hard
+        // to refund the tokens back to the user
+        assert_eq!(swap_routes.len(), 1);
 
-        let token_in: AccountId = first_exchange.token_in.as_str().parse().unwrap();
+        let exchange = swap_routes.get(0).unwrap().clone();
+
+        let token_in: AccountId = exchange.token_in.as_str().parse().unwrap();
 
         // Refund all the tokens if the token is not the first token in the exchange
         if token_in != token_id {
-            log!("Token {} is not the first token in the exchange.", token_id);
+            log!("Token {} is not the input token in the swap.", token_id);
             return amount;
         }
 
-        let token_out = last_exchange.token_out.as_str().parse().unwrap();
+        let token_out = exchange.token_out.as_str().parse().unwrap();
 
         // Refund all the tokens if the token out is not registered
         if !self.registered_tokens.contains(&token_out) {
@@ -129,14 +133,16 @@ impl Contract {
             return amount;
         }
 
-        let amount_in = first_exchange.amount_in.clone().parse::<u128>().expect("Failed to parse amount in.");
+        let amount_in = exchange.amount_in.clone().parse::<u128>().unwrap();
         let balance = amount - amount_in;
 
         let fee = balance * self.fee / 10000;
         let new_deposit = amount - fee;
         
-        let mut new_swap_routes = swap_routes;
-        new_swap_routes.first_mut().unwrap().amount_in = new_deposit.to_string();
+        let new_swap_routes = vec![TokenExchange {
+            amount_in: new_deposit.to_string(),
+            ..exchange
+        }];
 
         external_promise::ft_transfer_call(token_in.clone(), self.ref_finance_id.clone(), new_deposit.to_string(), "".to_string()).then(
             external_promise::swap(new_swap_routes, self.owner_id.clone(), self.ref_finance_id.clone())
