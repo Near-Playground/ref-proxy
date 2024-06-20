@@ -3,7 +3,9 @@ import { ContractAccountId } from '../../components/ContractAccountId';
 import {
     contractAccountId,
     contractVersion,
+    deployContract,
     refreshContractVersion,
+    updateContract,
 } from '../../signals/contract';
 import { accountState, activeAccount, wallet } from '../../signals/wallet';
 import BN from 'bn.js';
@@ -12,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as nearAPI from 'near-api-js';
 import { z } from 'zod';
 import { Transaction } from '@near-wallet-selector/core';
+import { patchNotes } from '../../data/patch-note';
 
 interface TokenDetail {
     tokenId: string;
@@ -31,7 +34,9 @@ const zFungibleTokenMetadata = z.object({
 });
 
 export function ContractOwner() {
-    const [deployError, setDeployError] = React.useState<string | null>(null);
+    const [createAccountError, setCreateAccountError] = React.useState<
+        string | null
+    >(null);
     const [addTokenIds, setAddTokenIds] = React.useState<string>('');
 
     const {
@@ -41,6 +46,8 @@ export function ContractOwner() {
         contractDeployed,
         owner,
     } = contractVersion.value ?? {};
+
+    const latestPatch = patchNotes[patchNotes.length - 1];
 
     async function addTokens() {
         if (!wallet.value) {
@@ -164,8 +171,8 @@ export function ContractOwner() {
         enabled: version !== -1,
     });
 
-    async function deployContract() {
-        setDeployError(null);
+    async function createAccount() {
+        setCreateAccountError(null);
 
         if (!wallet.value) {
             return;
@@ -184,7 +191,9 @@ export function ContractOwner() {
                 `.${activeAccount.value.accountId}`
             )
         ) {
-            setDeployError('Contract account id must end with your account id');
+            setCreateAccountError(
+                'Contract account id must end with your account id'
+            );
             return;
         }
 
@@ -192,7 +201,7 @@ export function ContractOwner() {
 
         // 10e24
         if (!accountBalance.gt(new BN('10000000000000000000000000'))) {
-            setDeployError(
+            setCreateAccountError(
                 'Insufficient balance to deploy contract, need 10 Near'
             );
             return;
@@ -266,7 +275,7 @@ export function ContractOwner() {
 
             return;
         } catch (err: unknown) {
-            setDeployError(JSON.stringify(err));
+            setCreateAccountError(JSON.stringify(err));
             return;
         }
     }
@@ -286,16 +295,29 @@ export function ContractOwner() {
                     <hr class='h-1 my-5 bg-gray-400 dark:bg-gray-600' />
                     <button
                         type='button'
+                        onClick={createAccount}
+                        class='text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800'
+                    >
+                        Create Account
+                    </button>
+                    {createAccountError && (
+                        <p class='text-red-600 dark:text-red-400'>
+                            {createAccountError}
+                        </p>
+                    )}
+                </>
+            )}
+            {accountExists && !contractDeployed && (
+                <>
+                    <hr class='h-1 my-5 bg-gray-400 dark:bg-gray-600' />
+                    <h2 class='text-lg mt-8 mb-5'>Fresh account found!</h2>
+                    <button
+                        type='button'
                         onClick={deployContract}
                         class='text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800'
                     >
                         Deploy Contract
                     </button>
-                    {deployError && (
-                        <p class='text-red-600 dark:text-red-400'>
-                            {deployError}
-                        </p>
-                    )}
                 </>
             )}
             {version !== -1 && (
@@ -306,6 +328,25 @@ export function ContractOwner() {
                         Recognised contract detected!
                     </p>
                     <p class='my-5'>Contract version: {humanReadableVersion}</p>
+                    <p class='my-5'>
+                        Latest Patch: {latestPatch.humanReadableVersion}
+                        {latestPatch.version !== version && (
+                            <>
+                                [&nbsp;
+                                <a
+                                    href='#'
+                                    onClick={(e) => {
+                                        e.preventDefault();
+
+                                        updateContract();
+                                    }}
+                                >
+                                    Update Contract
+                                </a>
+                                &nbsp;]
+                            </>
+                        )}
+                    </p>
                     <p class='my-5'>Contract owner: {owner}</p>
                     <hr class='h-1 my-5 bg-gray-400 dark:bg-gray-600' />
                     <h2 class='text-lg mt-8 mb-5'>Registered Tokens</h2>
@@ -356,7 +397,6 @@ export function ContractOwner() {
                     <p class='my-5 dark:text-red-300 text-red-700'>
                         Contract not recognised!
                     </p>
-                    <p class='my-5'>Contract version: {humanReadableVersion}</p>
                     <p class='my-5'>
                         Account Exists: {accountExists ? 'Yes' : 'No'}
                     </p>
