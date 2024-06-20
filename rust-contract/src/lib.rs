@@ -136,15 +136,16 @@ impl Contract {
         let amount_in = exchange.amount_in.clone().parse::<u128>().unwrap();
         let balance = amount - amount_in;
 
-        let fee = balance * self.fee / 10000;
-        let new_deposit = amount - fee;
+        let fee = amount_in * self.fee / 10000;
+        
+        let new_amount_in = amount_in - fee;
         
         let new_swap_routes = vec![TokenExchange {
-            amount_in: new_deposit.to_string(),
+            amount_in: new_amount_in.to_string(),
             ..exchange
         }];
 
-        external_promise::ft_transfer_call(token_in.clone(), self.ref_finance_id.clone(), new_deposit.to_string(), "".to_string()).then(
+        external_promise::ft_transfer_call(token_in.clone(), self.ref_finance_id.clone(), new_amount_in.to_string(), "".to_string()).then(
             external_promise::swap(new_swap_routes, self.owner_id.clone(), self.ref_finance_id.clone())
         ).then(
             Promise::new(env::current_account_id()).function_call(
