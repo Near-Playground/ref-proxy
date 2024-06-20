@@ -44,6 +44,7 @@ export function ContractOwner() {
         humanReadableVersion,
         accountExists,
         contractDeployed,
+        locked,
         owner,
     } = contractVersion.value ?? {};
 
@@ -62,64 +63,63 @@ export function ContractOwner() {
             return;
         }
 
-        const tokenIds = addTokenIds.split(',').map((x) => x.trim());
-
         const transactions: Transaction[] = [];
 
-        await Promise.all(
-            tokenIds.map(async (tokenId) => {
-                const near = await nearAPI.connect({
-                    networkId: 'testnet',
-                    nodeUrl: 'https://rpc.testnet.near.org',
-                });
+        const tokenIds = addTokenIds.split(',').map((x) => x.trim());
 
-                const account = await near.account('dontcare');
+        const tokenCheckStoragePromises = tokenIds.map(async (tokenId) => {
+            const near = await nearAPI.connect({
+                networkId: 'testnet',
+                nodeUrl: 'https://rpc.testnet.near.org',
+            });
 
-                const storageRegistered = await account
-                    .viewFunction({
-                        contractId: tokenId,
-                        methodName: 'storage_balance_of',
-                        args: {
-                            account_id: contractAccountId.value,
-                        },
-                    })
-                    .then((res) =>
-                        z
-                            .object({
-                                total: z.string(),
-                                available: z.string(),
-                            })
-                            .parse(res)
-                    )
-                    .then(() => true)
-                    .catch(() => false);
+            const account = await near.account('dontcare');
 
-                if (!storageRegistered) {
-                    transactions.push({
-                        signerId: activeAccount.value?.accountId ?? '',
-                        receiverId: tokenId,
-                        actions: [
-                            {
-                                type: 'FunctionCall',
-                                params: {
-                                    methodName: 'storage_deposit',
-                                    args: {
-                                        account_id: contractAccountId.value,
-                                        registration_only: true,
-                                    },
-                                    gas: '300000000000000',
-                                    deposit:
-                                        nearAPI.utils.format.parseNearAmount(
-                                            '0.0125'
-                                        )!,
+            const storageRegistered = await account
+                .viewFunction({
+                    contractId: tokenId,
+                    methodName: 'storage_balance_of',
+                    args: {
+                        account_id: contractAccountId.value,
+                    },
+                })
+                .then((res) =>
+                    z
+                        .object({
+                            total: z.string(),
+                            available: z.string(),
+                        })
+                        .parse(res)
+                )
+                .then(() => true)
+                .catch(() => false);
+
+            if (!storageRegistered) {
+                transactions.push({
+                    signerId: activeAccount.value?.accountId ?? '',
+                    receiverId: tokenId,
+                    actions: [
+                        {
+                            type: 'FunctionCall',
+                            params: {
+                                methodName: 'storage_deposit',
+                                args: {
+                                    account_id: contractAccountId.value,
+                                    registration_only: true,
                                 },
+                                gas: '300000000000000',
+                                deposit:
+                                    nearAPI.utils.format.parseNearAmount(
+                                        '0.0125'
+                                    )!,
                             },
-                        ],
-                    });
-                }
-            })
-        );
+                        },
+                    ],
+                });
+            }
+        });
 
+        await Promise.all(tokenCheckStoragePromises);
         await wallet.value.signAndSendTransactions({
             transactions: [
                 ...transactions,
@@ -363,7 +363,7 @@ export function ContractOwner() {
                     <p class='my-5'>Contract version: {humanReadableVersion}</p>
                     <p class='my-5'>
                         Latest Patch: {latestPatch.humanReadableVersion}
-                        {latestPatch.version !== version && (
+                        {latestPatch.version !== version && !locked && (
                             <>
                                 &nbsp;[&nbsp;
                                 <a
@@ -382,6 +382,7 @@ export function ContractOwner() {
                         )}
                     </p>
                     <p class='my-5'>Contract owner: {owner}</p>
+                    <p class='my-5'>Contract Locked: {locked ? 'Yes' : 'No'}</p>
                     <hr class='h-1 my-5 bg-gray-400 dark:bg-gray-600' />
                     <h2 class='text-lg mt-8 mb-5'>Registered Tokens</h2>
                     {tokens.isLoading && <p>Loading tokens...</p>}

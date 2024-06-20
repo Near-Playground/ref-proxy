@@ -44,7 +44,7 @@ export const refreshContractVersion = async (): Promise<void> => {
     let humanReadableVersion: string = 'Unknown';
     let accountExists: boolean = false;
     let contractDeployed: boolean = false;
-    let locked: boolean = !!localStorage.getItem(
+    let locked: boolean = !localStorage.getItem(
         `privateKey:${contractAccountId.value}`
     );
     let owner: string = '';
