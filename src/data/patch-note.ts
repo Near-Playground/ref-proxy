@@ -34,4 +34,22 @@ export const patchNotes: PatchNote[] = [
         description:
             'Fee and ref finance id are now configured via contract intiialise.',
     },
+    {
+        version: version++,
+        humanReadableVersion: '0.1.4',
+        date: new Date('2024-06-18'),
+        description: 'Fix a bug where fee was not deducted from the amount_in.',
+    },
+    {
+        version: version++,
+        humanReadableVersion: '0.1.5',
+        date: new Date('2024-06-19'),
+        description: 'Fix a bug in fee calculation.',
+    },
+    {
+        version: version++,
+        humanReadableVersion: '0.1.6',
+        date: new Date('2024-06-19'),
+        description: 'Fix a bug where we refund the fee to user.',
+    },
 ];

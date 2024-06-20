@@ -25,6 +25,7 @@ type ContractVersionData = {
     humanReadableVersion: string;
     accountExists: boolean;
     contractDeployed: boolean;
+    locked: boolean;
     owner: string;
 } | null;
 
@@ -43,6 +44,9 @@ export const refreshContractVersion = async (): Promise<void> => {
     let humanReadableVersion: string = 'Unknown';
     let accountExists: boolean = false;
     let contractDeployed: boolean = false;
+    let locked: boolean = !localStorage.getItem(
+        `privateKey:${contractAccountId.value}`
+    );
     let owner: string = '';
 
     if (!wallet.value) {
@@ -67,16 +71,13 @@ export const refreshContractVersion = async (): Promise<void> => {
 
         accountExists = true;
 
-        if (localStorage.getItem(`privateKey:${contractAccountId.value}`)) {
-            await deployContract().catch((err) => {});
-        }
-
         if (state.code_hash === '11111111111111111111111111111111') {
             contractVersion.value = {
                 version,
                 humanReadableVersion,
                 accountExists,
                 contractDeployed,
+                locked,
                 owner,
             };
 
@@ -90,6 +91,7 @@ export const refreshContractVersion = async (): Promise<void> => {
             humanReadableVersion,
             accountExists,
             contractDeployed,
+            locked,
             owner,
         };
 
@@ -119,6 +121,7 @@ export const refreshContractVersion = async (): Promise<void> => {
             humanReadableVersion,
             accountExists,
             contractDeployed,
+            locked,
             owner,
         };
 
@@ -146,13 +149,14 @@ export const refreshContractVersion = async (): Promise<void> => {
         humanReadableVersion,
         accountExists,
         contractDeployed,
+        locked,
         owner,
     };
 };
 
 effect(refreshContractVersion);
 
-async function deployContract() {
+export async function deployContract() {
     if (!contractAccountId.value) {
         return;
     }
@@ -184,26 +188,103 @@ async function deployContract() {
     const contractBuffer = await contract.arrayBuffer();
     const contractCode = new Uint8Array(contractBuffer);
 
+    await account
+        .signAndSendTransaction({
+            receiverId: contractAccountId.value,
+            actions: [
+                nearAPI.transactions.deployContract(contractCode),
+                nearAPI.transactions.functionCall(
+                    'new',
+                    {
+                        owner_id: activeAccount.value?.accountId,
+                        fee: 20,
+                        ref_finance_id: 'ref-finance-101.testnet',
+                    },
+                    new BN('200000000000000'),
+                    new BN('0')
+                ),
+            ],
+        })
+        .then(refreshContractVersion);
+}
+
+export async function updateContract() {
+    if (!contractAccountId.value) {
+        return;
+    }
+
+    const privateKey: string =
+        localStorage.getItem(`privateKey:${contractAccountId.value}`) ?? '';
+
+    if (!privateKey) {
+        return;
+    }
+
+    const keyStore = new nearAPI.keyStores.InMemoryKeyStore();
+
+    keyStore.setKey(
+        'testnet',
+        contractAccountId.value,
+        nearAPI.KeyPair.fromString(privateKey)
+    );
+
+    const near = await nearAPI.connect({
+        networkId: 'testnet',
+        nodeUrl: 'https://rpc.testnet.near.org',
+        deps: { keyStore },
+    });
+
+    const account = await near.account(contractAccountId.value);
+
+    const contract = await fetch('/ref_proxy.wasm');
+    const contractBuffer = await contract.arrayBuffer();
+    const contractCode = new Uint8Array(contractBuffer);
+
+    await account
+        .signAndSendTransaction({
+            receiverId: contractAccountId.value,
+            actions: [nearAPI.transactions.deployContract(contractCode)],
+        })
+        .then(refreshContractVersion);
+}
+
+export async function lockContract() {
+    if (!contractAccountId.value) {
+        return;
+    }
+
+    const privateKey: string =
+        localStorage.getItem(`privateKey:${contractAccountId.value}`) ?? '';
+
+    if (!privateKey) {
+        return;
+    }
+
+    const keyStore = new nearAPI.keyStores.InMemoryKeyStore();
+
+    keyStore.setKey(
+        'testnet',
+        contractAccountId.value,
+        nearAPI.KeyPair.fromString(privateKey)
+    );
+
+    const near = await nearAPI.connect({
+        networkId: 'testnet',
+        nodeUrl: 'https://rpc.testnet.near.org',
+        deps: { keyStore },
+    });
+
+    const account = await near.account(contractAccountId.value);
+
     const publicKey = nearAPI.KeyPair.fromString(privateKey).getPublicKey();
 
-    await account.signAndSendTransaction({
-        receiverId: contractAccountId.value,
-        actions: [
-            nearAPI.transactions.deployContract(contractCode),
-            // nearAPI.transactions.functionCall(
-            //     'new',
-            //     {
-            //         owner_id: activeAccount.value?.accountId,
-            //         fee: 20,
-            //         ref_finance_id: 'ref-finance-101.testnet',
-            //     },
-            //     new BN('200000000000000'),
-            //     new BN('0')
-            // ),
-            // nearAPI.transactions.deleteKey(publicKey),
-        ],
-    });
-    // .then(() =>
-    //     localStorage.removeItem(`privateKey:${contractAccountId.value}`)
-    // );
+    await account
+        .signAndSendTransaction({
+            receiverId: contractAccountId.value,
+            actions: [nearAPI.transactions.deleteKey(publicKey)],
+        })
+        .then(() =>
+            localStorage.removeItem(`privateKey:${contractAccountId.value}`)
+        )
+        .then(refreshContractVersion);
 }
