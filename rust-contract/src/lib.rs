@@ -1,5 +1,6 @@
 mod helper;
 mod external_promise;
+mod gas_plan;
 
 use helper::*;
 use near_sdk::{env, log, near, serde::{Deserialize, Serialize}, serde_json, AccountId, Gas, NearToken, Promise, PromiseResult};
@@ -99,7 +100,7 @@ impl Contract {
         let amount = amount.parse::<u128>().expect("Failed to parse amount.");
 
         // Preventing the contract halting half way through the transaction
-        assert!(env::prepaid_gas() > Gas::from_tgas(250), "Not enough gas to process the transaction.");
+        assert!(env::prepaid_gas() >= gas_plan::GAS_FOR_FT_ON_TRANSFER);
 
         // Refund all the tokens if the token is not registered
         if !self.registered_tokens.contains(&token_id) {
@@ -157,7 +158,7 @@ impl Contract {
                     "token_out": token_out.to_string()
                 }).to_string().as_bytes().to_vec(),
                 NearToken::from_yoctonear(0),
-                Gas::from_tgas(80)
+                gas_plan::GAS_FOR_ON_FT_TRANSFER_COMPLETE
             )
         );
 
@@ -190,17 +191,23 @@ impl Contract {
         }
     }
 
-    pub fn get_registered_tokens(&self) -> Vec<AccountId> {
+    pub fn get_recommended_gas(self) -> String {
+        // extra 30 tgas used by FT contract
+        let gas = gas_plan::GAS_FOR_FT_ON_TRANSFER.as_gas() + Gas::from_tgas(30).as_gas();
+        gas.to_string()
+    }
+
+    pub fn get_registered_tokens(self) -> Vec<AccountId> {
         self.registered_tokens.clone()
     }
 
-    pub fn get_fees(&self) -> String {
+    pub fn get_fees(self) -> String {
         let percentage = self.fee as f64 / 100.0;
 
         format!("{:02}%", percentage)
     }
 
-    pub fn get_owner_id(&self) -> AccountId {
+    pub fn get_owner_id(self) -> AccountId {
         self.owner_id.clone()
     }
 }

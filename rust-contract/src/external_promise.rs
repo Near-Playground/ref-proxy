@@ -1,4 +1,4 @@
-use crate::TokenExchange;
+use crate::{gas_plan, TokenExchange};
 use near_sdk::{serde_json, AccountId, Gas, NearToken, Promise};
 
 pub fn register_tokens(token_ids: Vec<AccountId>, ref_finance_id: AccountId) -> Promise {
@@ -22,7 +22,7 @@ pub fn withdraw_from_ref(amount: String, token_id: AccountId, ref_finance_id: Ac
             "token_id": token_id.to_string(),
         }).to_string().as_bytes().to_vec(),
         NearToken::from_yoctonear(1),
-        Gas::from_tgas(50)
+        gas_plan::GAS_FOR_REF_FINANCE_WITHDRAW
     )
 }
 
@@ -35,7 +35,7 @@ pub fn transfer_ft(token_id: AccountId, receiver_id: AccountId, amount: String) 
             "memo": null
         }).to_string().as_bytes().to_vec(),
         NearToken::from_yoctonear(1),
-        Gas::from_tgas(10)
+        gas_plan::GAS_FOR_FT_TRANSFER
     )
 }
 
@@ -48,7 +48,7 @@ pub fn ft_transfer_call(token_id: AccountId, receiver_id: AccountId, amount: Str
             "receiver_id": receiver_id.to_string()}
         ).to_string().as_bytes().to_vec(),
         NearToken::from_yoctonear(1),
-        Gas::from_tgas(50)
+        gas_plan::GAS_FOR_FT_TRANSFER_CALL
     )
 }
 
@@ -60,6 +60,6 @@ pub fn swap(swap_action_routes: Vec<TokenExchange>, refferal_id: AccountId, ref_
             "referral_id": refferal_id
         }).to_string().as_bytes().to_vec(),
         NearToken::from_yoctonear(1),
-        Gas::from_tgas(80)
+        gas_plan::GAS_FOR_REF_FINANCE_SWAP
     )
 }
