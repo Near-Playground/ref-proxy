@@ -94,7 +94,7 @@ impl Contract {
         }
     }
 
-    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> u128 {
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String {
         let token_id = env::predecessor_account_id();
         let amount = amount.parse::<u128>().expect("Failed to parse amount.");
 
@@ -104,7 +104,7 @@ impl Contract {
         // Refund all the tokens if the token is not registered
         if !self.registered_tokens.contains(&token_id) {
             log!("Token {} is not registered.", token_id);
-            return amount;
+            return amount.to_string();
         };
 
         // Parsing message
@@ -122,7 +122,7 @@ impl Contract {
         // Refund all the tokens if the token is not the first token in the exchange
         if token_in != token_id {
             log!("Token {} is not the input token in the swap.", token_id);
-            return amount;
+            return amount.to_string();
         }
 
         let token_out = exchange.token_out.as_str().parse().unwrap();
@@ -130,7 +130,7 @@ impl Contract {
         // Refund all the tokens if the token out is not registered
         if !self.registered_tokens.contains(&token_out) {
             log!("Token {} is not registered.", token_out);
-            return amount;
+            return amount.to_string();
         }
 
         let amount_in = exchange.amount_in.clone().parse::<u128>().unwrap();
@@ -161,7 +161,7 @@ impl Contract {
             )
         );
 
-        return balance;
+        return balance.to_string();
     }
 
     #[private]

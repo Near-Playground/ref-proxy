@@ -46,4 +46,10 @@ export const patchNotes: PatchNote[] = [
         date: new Date('2024-06-19'),
         description: 'Fix a bug in fee calculation.',
     },
+    {
+        version: version++,
+        humanReadableVersion: '0.1.6',
+        date: new Date('2024-06-19'),
+        description: 'Fix a bug where we refund the fee to user.',
+    },
 ];

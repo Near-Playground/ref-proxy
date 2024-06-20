@@ -19,7 +19,7 @@ import { patchNotes } from '../../data/patch-note';
 interface TokenDetail {
     tokenId: string;
     symbol: string;
-    balance: string;
+    balance: number;
 }
 
 // https://nomicon.io/Standards/Tokens/FungibleToken/Metadata
@@ -143,24 +143,21 @@ export function ContractOwner() {
                             .then((res) => zFungibleTokenMetadata.parse(res)),
                         contract
                             .viewFunction({
-                                contractId: 'ref-finance-101.testnet',
-                                methodName: 'get_deposit',
+                                contractId: tokenId,
+                                methodName: 'ft_balance_of',
                                 args: {
                                     account_id: contractAccountId.value,
-                                    token_id: tokenId,
                                 },
                             })
                             .then((res) => z.string().parse(res))
                             .then((res) => new BN(res)),
                     ]).then(([metadata, balance]) => {
-                        console.log(tokenId, balance.toString());
-
                         return {
                             tokenId,
                             symbol: metadata.symbol,
-                            balance: balance
-                                .div(new BN(10).pow(new BN(metadata.decimals)))
-                                .toString(),
+                            balance:
+                                parseFloat(balance.toString()) /
+                                10 ** metadata.decimals,
                         };
                     });
                 }
