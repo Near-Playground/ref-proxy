@@ -89,7 +89,7 @@ export function ContractUser() {
                                         ],
                                     }),
                                 },
-                                gas: '300000000000000',
+                                gas: '143000000000000',
                                 deposit: '1',
                             },
                         },
