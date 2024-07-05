@@ -1,9 +1,13 @@
-mod helper;
 mod external_promise;
 mod gas_plan;
+mod helper;
 
 use helper::*;
-use near_sdk::{env, log, near, serde::{Deserialize, Serialize}, serde_json, AccountId, Gas, NearToken, Promise, PromiseResult};
+use near_sdk::{
+    env, log, near,
+    serde::{Deserialize, Serialize},
+    serde_json, AccountId, Gas, NearToken, Promise, PromiseResult,
+};
 
 // Define the contract structure
 #[near(contract_state)]
@@ -27,7 +31,7 @@ struct TokenExchange {
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 struct Message {
-    actions: Vec<TokenExchange>
+    actions: Vec<TokenExchange>,
 }
 
 // Define the default, which automatically initializes the contract
@@ -43,7 +47,11 @@ impl Contract {
     #[init]
     pub fn new(owner_id: AccountId, fee: u128, ref_finance_id: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
-        assert_eq!(env::current_account_id(), env::predecessor_account_id(), "Predecessor account must be the same as the current account.");
+        assert_eq!(
+            env::current_account_id(),
+            env::predecessor_account_id(),
+            "Predecessor account must be the same as the current account."
+        );
         assert!(fee <= 10000, "Fee must be less than or equal to 100%.");
 
         Self {
@@ -82,16 +90,18 @@ impl Contract {
     }
 
     #[payable]
-    pub fn withdraw(&mut self, amount: String, token_id: AccountId, receiver_id: AccountId) -> Promise {
+    pub fn withdraw(
+        &mut self,
+        amount: String,
+        token_id: AccountId,
+        receiver_id: AccountId,
+    ) -> Promise {
         assert_owner_and_full_access(&self.owner_id);
 
         match token_id.to_string().as_str() {
-            "near" => {
-                Promise::new(receiver_id).transfer(NearToken::from_yoctonear(amount.parse().unwrap()))
-            }
-            _ => {
-                external_promise::transfer_ft(token_id, receiver_id, amount)
-            }
+            "near" => Promise::new(receiver_id)
+                .transfer(NearToken::from_yoctonear(amount.parse().unwrap())),
+            _ => external_promise::transfer_ft(token_id, receiver_id, amount),
         }
     }
 
@@ -138,17 +148,26 @@ impl Contract {
         let balance = amount - amount_in;
 
         let fee = amount_in * self.fee / 10000;
-        
+
         let new_amount_in = amount_in - fee;
-        
+
         let new_swap_routes = vec![TokenExchange {
             amount_in: new_amount_in.to_string(),
             ..exchange
         }];
 
-        external_promise::ft_transfer_call(token_in.clone(), self.ref_finance_id.clone(), new_amount_in.to_string(), "".to_string()).then(
-            external_promise::swap(new_swap_routes, self.owner_id.clone(), self.ref_finance_id.clone())
-        ).then(
+        external_promise::ft_transfer_call(
+            token_in.clone(),
+            self.ref_finance_id.clone(),
+            new_amount_in.to_string(),
+            "".to_string(),
+        )
+        .then(external_promise::swap(
+            new_swap_routes,
+            self.owner_id.clone(),
+            self.ref_finance_id.clone(),
+        ))
+        .then(
             Promise::new(env::current_account_id()).function_call(
                 "on_ft_transfer_complete".to_string(),
                 serde_json::json!({
@@ -156,37 +175,56 @@ impl Contract {
                     "sender": sender_id.to_string(),
                     "token_in": token_in.to_string(),
                     "token_out": token_out.to_string()
-                }).to_string().as_bytes().to_vec(),
+                })
+                .to_string()
+                .as_bytes()
+                .to_vec(),
                 NearToken::from_yoctonear(0),
-                gas_plan::GAS_FOR_ON_FT_TRANSFER_COMPLETE
-            )
+                gas_plan::GAS_FOR_ON_FT_TRANSFER_COMPLETE,
+            ),
         );
 
         return balance.to_string();
     }
 
     #[private]
-    pub fn on_ft_transfer_complete(&mut self, amount_in: String, sender: AccountId, token_in: AccountId, token_out: AccountId) -> Promise {
-        assert!(env::promise_results_count() > 0, "No promise results found.");
+    pub fn on_ft_transfer_complete(
+        &mut self,
+        amount_in: String,
+        sender: AccountId,
+        token_in: AccountId,
+        token_out: AccountId,
+    ) -> Promise {
+        assert!(
+            env::promise_results_count() > 0,
+            "No promise results found."
+        );
 
         let promise_result = env::promise_result(0);
 
         match promise_result {
             PromiseResult::Failed => {
                 log!("Promise failed.");
-                external_promise::withdraw_from_ref(amount_in.clone(), token_in.clone(), self.ref_finance_id.clone())
-                .then(
-                    external_promise::transfer_ft(token_in, sender, amount_in)
+                external_promise::withdraw_from_ref(
+                    amount_in.clone(),
+                    token_in.clone(),
+                    self.ref_finance_id.clone(),
                 )
+                .then(external_promise::transfer_ft(token_in, sender, amount_in))
             }
             PromiseResult::Successful(result) => {
-                let amount_out = String::from_utf8(result).unwrap().trim_matches('"').to_string();
+                let amount_out = String::from_utf8(result)
+                    .unwrap()
+                    .trim_matches('"')
+                    .to_string();
                 log!("Promise succeed with result {}", amount_out);
 
-                external_promise::withdraw_from_ref(amount_out.clone(), token_out.clone(), self.ref_finance_id.clone())
-                .then(
-                    external_promise::transfer_ft(token_out, sender, amount_out)
+                external_promise::withdraw_from_ref(
+                    amount_out.clone(),
+                    token_out.clone(),
+                    self.ref_finance_id.clone(),
                 )
+                .then(external_promise::transfer_ft(token_out, sender, amount_out))
             }
         }
     }
